@@ -675,8 +675,8 @@ FAQ = [
     ("What is the AI add-on?",
      "Optional. When you add a source, it can read the page or document for you and list its "
      "findings, whether they support each idea and which checks they relate to. Choose Claude (your own API "
-     "key), Google Gemini (free tier with limits) or a free local model (Ollama) in Sources → "
-     "AI add-on settings. You always review the findings before they are saved."),
+     "key), Google Gemini (free tier with limits) or a free local model (Ollama) with the "
+     "'AI add-on' button at the top. You always review the findings before they are saved."),
     ("Can I add my own research?",
      "Yes. Sources → Add: paste a link or pick a PDF or document, write the key finding and "
      "choose which checks it supports."),
@@ -2148,18 +2148,69 @@ def html_report(app):
 
 # ================================================================ GUI HELPERS
 
-def center(win, w=None, h=None):
+def center(win, w=None, h=None, lock=True):
     win.update_idletasks()
     w = w or win.winfo_width()
     h = h or win.winfo_height()
     sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+    w, h = min(w, sw - 40), min(h, sh - 80)
+    if lock:  # dialogs keep their size floor, so buttons never get squeezed out
+        win.minsize(min(w, int(w * 0.85)), min(h, int(h * 0.85)))
     win.geometry(f"{w}x{h}+{max((sw - w) // 2, 0)}+{max((sh - h) // 3, 0)}")
 
 
+def scroll_text(parent, **kw):
+    """A Text with a scrollbar that is always visible, so it is clear when text continues.
+    pack/grid/place on the returned Text lay out its frame (text + scrollbar) together."""
+    box = tk.Frame(parent, bg=kw.get("bg", C["card"]))
+    t = tk.Text(box, **kw)
+    sb = ttk.Scrollbar(box, orient="vertical", command=t.yview)
+    t.configure(yscrollcommand=sb.set)
+    sb.pack(side="right", fill="y")
+    t.pack(side="left", fill="both", expand=True)
+    for name in ("pack", "grid", "place", "pack_forget", "grid_forget", "grid_remove"):
+        setattr(t, name, getattr(box, name))
+    t.box = box
+    return t
+
+
+class ScrollFrame(ttk.Frame):
+    """A frame whose content scrolls. The scrollbar appears as soon as content is taller
+    than the space, so nothing is ever cut off silently. Put widgets in .inner."""
+
+    def __init__(self, parent, bg=None, **kw):
+        super().__init__(parent, **kw)
+        self.cv = tk.Canvas(self, highlightthickness=0, bd=0, bg=bg or C["bg"])
+        self.sb = ttk.Scrollbar(self, orient="vertical", command=self.cv.yview)
+        self.cv.configure(yscrollcommand=self.sb.set)
+        self.cv.pack(side="left", fill="both", expand=True)
+        self.inner = ttk.Frame(self.cv)
+        self._win = self.cv.create_window(0, 0, window=self.inner, anchor="nw")
+        self.inner.bind("<Configure>", lambda e: self._update())
+        self.cv.bind("<Configure>", lambda e: (self.cv.itemconfigure(self._win, width=e.width),
+                                              self._update()))
+        for w in (self.cv, self.inner):
+            w.bind("<Enter>", lambda e: self.cv.bind_all("<MouseWheel>", self._wheel))
+            w.bind("<Leave>", lambda e: self.cv.unbind_all("<MouseWheel>"))
+
+    def _update(self):
+        self.cv.configure(scrollregion=self.cv.bbox("all"))
+        need = self.inner.winfo_reqheight() > self.cv.winfo_height() + 1
+        if need and not self.sb.winfo_ismapped():
+            self.sb.pack(side="right", fill="y", before=self.cv)
+        elif not need and self.sb.winfo_ismapped():
+            self.sb.pack_forget()
+            self.cv.yview_moveto(0)
+
+    def _wheel(self, e):
+        if self.sb.winfo_ismapped():
+            self.cv.yview_scroll(int(-e.delta / 120) or (-1 if e.delta > 0 else 1), "units")
+
+
 def styled_text(parent, height=10):
-    t = tk.Text(parent, wrap="word", height=height, font=(FONT, 11), bg=C["card"], fg=C["text"],
-                relief="flat", padx=16, pady=14, highlightthickness=1,
-                highlightbackground=C["line"], highlightcolor=C["line"], spacing2=2)
+    t = scroll_text(parent, wrap="word", height=height, font=(FONT, 11), bg=C["card"], fg=C["text"],
+                    relief="flat", padx=16, pady=14, highlightthickness=1,
+                    highlightbackground=C["line"], highlightcolor=C["line"], spacing2=2)
     t.tag_config("h1", font=(FONT, 15, "bold"), spacing3=6)
     t.tag_config("h2", font=(FONT, 11, "bold"), foreground=C["navy2"], spacing1=12, spacing3=4)
     t.tag_config("muted", foreground=C["muted"], font=(FONT, 10))
@@ -2242,7 +2293,7 @@ class App(tk.Tk):
         w = max(min_w, min(1320, int(sw * 0.88)))
         h = max(min_h, min(860, int(sh * 0.86)))
         self.minsize(min_w, min_h)
-        center(self, w, h)
+        center(self, w, h, lock=False)
         self.report_callback_exception = self._on_error
 
     def _on_error(self, exc, val, tb):
@@ -2328,6 +2379,9 @@ class App(tk.Tk):
                  "Plan how long a test must run, or check whether a test result is real."),
                 ("Sources", lambda: SourcesWindow(self),
                  "The research and case studies behind each check, and the rule each check uses."),
+                ("AI add-on", lambda: AISettingsWindow(self),
+                 "Optional: let an AI read the research you add. Choose Claude, Gemini or a free "
+                 "local model, and enter your own key."),
                 ("?  Help & FAQ", lambda: HelpWindow(self),
                  "How it works, common questions, explanations of terms and contact.")]:
             b = ttk.Button(hb, text=text, style="Header.TButton", command=cmd)
@@ -2496,7 +2550,7 @@ class App(tk.Tk):
                  "If you like, you can open its visual audit, get step-by-step fixes or create a "
                  "UX/dev brief.",
                  "Filter with To fix / All / OK. 'Save report' shares the results.",
-                 "Ideas are ranked by ICE priority. A/B test tools, Sources and Help are at the top."]
+                 "Ideas are ranked by ICE priority. A/B test tools, Sources, AI add-on and Help are at the top."]
         for i, s_ in enumerate(steps, 1):
             t.insert("end", f"{i}.  {s_}\n", "step")
         t.insert("end", "New to CRO? See '? Help & FAQ'. Results are ideas to test, not guarantees.",
@@ -2904,21 +2958,34 @@ class App(tk.Tk):
 
 
 def draw_how_it_works(cv):
-    """Flow diagram of how the app works (black & white)."""
+    """Flow diagram of how the app works. Boxes size themselves to their text, so the
+    layout holds with any font or screen scaling."""
     W = 720
+    LX, RX, BW = 40, 390, 290
 
-    def box(x, y, w, h, title, sub="", dark=False):
-        cv.create_rectangle(x, y, x + w, y + h, fill="#0A0A0A" if dark else "#FFFFFF",
-                            outline="#0A0A0A", width=2)
+    def text_box(x, y, w, title, sub="", dark=False):
         col = "#FFFFFF" if dark else "#0A0A0A"
+        t = cv.create_text(x + w / 2, y + 10, text=title, anchor="n", fill=col, width=w - 20,
+                           justify="center", font=(FONT, 10, "bold"))
+        bottom = cv.bbox(t)[3]
         if sub:
-            cv.create_text(x + w / 2, y + 16, text=title, fill=col, font=(FONT, 10, "bold"),
-                           width=w - 16)
-            cv.create_text(x + w / 2, y + 16 + (h - 16) / 2, text=sub, fill="#D4D4D4" if dark
-                           else "#525252", font=(FONT, 9), width=w - 16, justify="center")
-        else:
-            cv.create_text(x + w / 2, y + h / 2, text=title, fill=col, font=(FONT, 10, "bold"),
-                           width=w - 16)
+            st = cv.create_text(x + w / 2, bottom + 4, text=sub, anchor="n", width=w - 20,
+                                justify="center", fill="#D4D4D4" if dark else "#525252",
+                                font=(FONT, 9))
+            bottom = cv.bbox(st)[3]
+        h = bottom - y + 10
+        r = cv.create_rectangle(x, y, x + w, y + h, fill="#0A0A0A" if dark else "#FFFFFF",
+                                outline="#0A0A0A", width=2)
+        cv.tag_lower(r)
+        return h, r
+
+    def even(pairs, y):
+        """Give boxes in one row the same height."""
+        h = max(p[0] for p in pairs)
+        for _, r in pairs:
+            x1, y1, x2, _ = cv.coords(r)
+            cv.coords(r, x1, y1, x2, y + h)
+        return h
 
     def arrow(x1, y1, x2, y2):
         cv.create_line(x1, y1, x2, y2, fill="#0A0A0A", width=2, arrow="last", arrowshape=(9, 11, 4))
@@ -2927,58 +2994,70 @@ def draw_how_it_works(cv):
         cv.create_oval(x - 11, y - 11, x + 11, y + 11, fill="#0A0A0A", outline="")
         cv.create_text(x, y, text=str(n), fill="#FFFFFF", font=(FONT, 9, "bold"))
 
-    L, R, bw = 40, 390, 290          # two input columns
-    # inputs
-    box(L, 10, bw, 44, "Store or product link", dark=True)
-    box(R, 10, bw, 44, "Analytics CSV (GA4 / Shopify)", dark=True)
-    arrow(L + bw / 2, 54, L + bw / 2, 76)
-    arrow(R + bw / 2, 54, R + bw / 2, 76)
-    # step 1
-    box(L, 76, bw, 86, "Collect the pages",
-        "Homepage · a product page · product data (.json) · speed · optional real phone "
-        "browser with screenshot")
-    box(R, 76, bw, 86, "Read the data",
-        "Finds sessions, purchases, revenue, add-to-carts and checkouts by device, channel or "
-        "landing page")
-    step(1, L - 16, 119)
-    arrow(L + bw / 2, 162, L + bw / 2, 184)
-    arrow(R + bw / 2, 162, R + bw / 2, 184)
-    # step 2
-    box(L, 184, bw, 84, "Run the checks",
-        "Simple rules look for reviews, shipping info, trust signals, Shop Pay, tracking, speed…")
-    box(R, 184, bw, 84, "Compare segments",
-        "Mobile vs desktop · weak channels · low-engagement landing pages · cart and checkout drop-off")
-    step(2, L - 16, 226)
-    # merge
-    arrow(L + bw / 2, 268, W / 2, 304)
-    arrow(R + bw / 2, 268, W / 2, 304)
-    box(W / 2 - 160, 304, 320, 40, "Each item: ✓ OK  or  ✗ Fix")
-    step(3, W / 2 - 176, 324)
-    arrow(W / 2, 344, W / 2, 366)
-    # step 4
-    box(80, 366, W - 120, 92, "Explain and rank every 'Fix'",
-        "Why it matters (plain words) · How it was checked · Hypothesis for an A/B test · "
-        "Evidence from your Sources list · ICE priority = (Impact + Confidence + Ease) ÷ 3, "
-        "where confidence grows with the number of sources")
-    step(4, 64, 412)
-    arrow(W / 2, 458, W / 2, 480)
-    # outputs
+    y = 12
+    h = even([text_box(LX, y, BW, "Store or product link", dark=True),
+              text_box(RX, y, BW, "Analytics CSV (GA4 / Shopify)", dark=True)], y)
+    arrow(LX + BW / 2, y + h, LX + BW / 2, y + h + 20)
+    arrow(RX + BW / 2, y + h, RX + BW / 2, y + h + 20)
+
+    y += h + 20
+    h = even([text_box(LX, y, BW, "Collect the pages",
+                       "Homepage · a product page · product data · speed · optional real phone "
+                       "browser with screenshot"),
+              text_box(RX, y, BW, "Read the data",
+                       "Sessions, purchases, revenue, add-to-carts and checkouts by device, "
+                       "channel or landing page")], y)
+    step(1, LX - 18, y + h / 2)
+    arrow(LX + BW / 2, y + h, LX + BW / 2, y + h + 20)
+    arrow(RX + BW / 2, y + h, RX + BW / 2, y + h + 20)
+
+    y += h + 20
+    h = even([text_box(LX, y, BW, "Run the checks",
+                       "Simple rules look for reviews, shipping info, trust signals, Shop Pay, "
+                       "tracking, speed…"),
+              text_box(RX, y, BW, "Compare segments",
+                       "Mobile vs desktop · weak channels · low-engagement landing pages · cart "
+                       "and checkout drop-off")], y)
+    step(2, LX - 18, y + h / 2)
+    y_merge = y + h + 34
+    arrow(LX + BW / 2, y + h, W / 2 + 15, y_merge)
+    arrow(RX + BW / 2, y + h, W / 2 + 15, y_merge)
+
+    y = y_merge
+    h, _ = text_box(W / 2 - 145, y, 320, "Each item:  ✓ OK   or   ✗ Fix")
+    step(3, W / 2 - 165, y + h / 2)
+    arrow(W / 2 + 15, y + h, W / 2 + 15, y + h + 20)
+
+    y += h + 20
+    h, _ = text_box(90, y, W - 130, "Explain and rank every 'Fix'",
+                    "Why it matters · how it was checked · a hypothesis for an A/B test · evidence "
+                    "from your Sources list · ICE priority = (Impact + Confidence + Ease) ÷ 3, where "
+                    "confidence grows with the number of supporting sources")
+    step(4, 72, y + h / 2)
+    y += h
+    arrow(W / 2 + 15, y, W / 2 + 15, y + 18)
+
+    y += 18
     outs = [("Open visual audit", "marked screenshot, sketch or chart"),
             ("Help me fix this", "steps · code · AI prompt"),
             ("UX/dev brief", "ready for the team"),
             ("Report & A/B tools", "share · plan · read results")]
-    ow, gap = 152, 10
+    ow, gap = 150, 12
     x0 = (W - (4 * ow + 3 * gap)) / 2 + 20
-    cv.create_line(x0 + ow / 2, 480, x0 + 3 * (ow + gap) + ow / 2, 480, fill="#0A0A0A", width=2)
+    cv.create_line(x0 + ow / 2, y, x0 + 3 * (ow + gap) + ow / 2, y, fill="#0A0A0A", width=2)
+    boxes = []
     for i, (t, sub) in enumerate(outs):
         x = x0 + i * (ow + gap)
-        arrow(x + ow / 2, 480, x + ow / 2, 498)
-        box(x, 498, ow, 64, t, sub)
-    step(5, x0 - 16, 530)
-    cv.create_text(W / 2 + 20, 590, text="Runs on your computer. Outside calls: the store itself and, "
-                   "only if you switch them on, Google PageSpeed and your AI provider.",
-                   fill="#525252", font=(FONT, 9), width=W - 40)
-    return 620
+        arrow(x + ow / 2, y, x + ow / 2, y + 16)
+        boxes.append(text_box(x, y + 16, ow, t, sub))
+    h = even(boxes, y + 16)
+    step(5, x0 - 18, y + 16 + h / 2)
+    y += 16 + h + 18
+    note = cv.create_text(W / 2 + 20, y, anchor="n", width=W - 40, justify="center", fill="#525252",
+                          font=(FONT, 9),
+                          text="Runs on your computer. Outside calls: the store itself and, only if you "
+                               "switch them on, Google PageSpeed and your AI provider.")
+    return cv.bbox(note)[3] + 16
 
 
 class AuditWindow(tk.Toplevel):
@@ -3046,7 +3125,7 @@ class AuditWindow(tk.Toplevel):
         t.config(state="disabled")
 
         btns = ttk.Frame(self, padding=(20, 0, 20, 18))
-        btns.pack(fill="x")
+        btns.pack(side="bottom", fill="x", before=body)
         ttk.Button(btns, text="Open full-size image", style="Ghost.TButton",
                    command=lambda: open_location(audit["shot"])).pack(side="left")
         ttk.Button(btns, text="Save image as…", style="Ghost.TButton",
@@ -3087,9 +3166,13 @@ class HelpWindow(tk.Toplevel):
         nb.add(f0, text="  How it works  ")
         cv = tk.Canvas(f0, width=760, height=620, bg=C["card"], highlightthickness=1,
                        highlightbackground=C["line"])
-        cv.pack(fill="both", expand=True)
+        csb = ttk.Scrollbar(f0, command=cv.yview)
+        cv.configure(yscrollcommand=csb.set)
+        csb.pack(side="right", fill="y")
+        cv.pack(side="left", fill="both", expand=True)
         h = draw_how_it_works(cv)
-        cv.configure(scrollregion=(0, 0, 760, h))
+        cv.configure(scrollregion=(0, 0, 760, h), height=min(h, self.winfo_screenheight() - 260))
+        cv.bind("<MouseWheel>", lambda e: cv.yview_scroll(int(-e.delta / 120), "units"))
 
         f1 = ttk.Frame(nb, padding=(0, 8, 0, 0))
         nb.add(f1, text="  FAQ  ")
@@ -3129,7 +3212,7 @@ class HelpWindow(tk.Toplevel):
                      values=["Question", "Feature idea", "Bug report", "Other"]).grid(
             row=3, column=1, sticky="w")
         ttk.Label(f3, text="Message").grid(row=4, column=0, sticky="nw", pady=6)
-        msg = tk.Text(f3, height=10, wrap="word", font=(FONT, 10), relief="flat",
+        msg = scroll_text(f3, height=10, wrap="word", font=(FONT, 10), relief="flat",
                       highlightthickness=1, highlightbackground=C["line"],
                       highlightcolor=C["text"])
         msg.grid(row=4, column=1, columnspan=2, sticky="nsew", pady=6)
@@ -3162,7 +3245,8 @@ class HelpWindow(tk.Toplevel):
         ttk.Button(b, text="Send email", style="Accent.TButton", command=send).pack(side="right")
 
         self.transient(app)
-        center(self, 840, 820)
+        self.update_idletasks()
+        center(self, 860, min(self.winfo_reqheight() + 20, self.winfo_screenheight() - 80))
 
 
 class AISettingsWindow(tk.Toplevel):
@@ -3174,8 +3258,11 @@ class AISettingsWindow(tk.Toplevel):
         self.title("AI add-on settings")
         self.configure(bg=C["bg"])
         self.settings = load_settings()
-        f = ttk.Frame(self, padding=22)
-        f.pack(fill="both", expand=True)
+        b = ttk.Frame(self, padding=(22, 10, 22, 20))
+        b.pack(fill="x", side="bottom")
+        sf = ScrollFrame(self, padding=(22, 22, 8, 0))
+        sf.pack(fill="both", expand=True)
+        f = sf.inner
         ttk.Label(f, text="AI add-on: read sources for you", font=(FONT, 15, "bold")).pack(anchor="w")
         ttk.Label(f, text="Optional. When you add a source, the AI reads it and lists the findings it "
                           "contains, whether they support each idea, and which checks they relate to. You "
@@ -3202,8 +3289,6 @@ class AISettingsWindow(tk.Toplevel):
         self.result = ttk.Label(f, text="", wraplength=640, justify="left")
         self.result.pack(anchor="w", pady=(12, 0))
 
-        b = ttk.Frame(self, padding=(22, 0, 22, 20))
-        b.pack(fill="x", side="bottom")
         ttk.Button(b, text="Test connection", style="Ghost.TButton", command=self._test).pack(side="left")
         ttk.Button(b, text="Save", style="Accent.TButton", command=self._save).pack(side="right")
         ttk.Button(b, text="Cancel", style="Ghost.TButton", command=self.destroy).pack(side="right", padx=8)
@@ -3389,10 +3474,11 @@ class SourcesWindow(tk.Toplevel):
                    command=self.restore).pack(side="right")
         ttk.Button(b, text="AI add-on settings", style="Ghost.TButton",
                    command=lambda: AISettingsWindow(self.app)).pack(side="right", padx=8)
-        self.info = tk.Label(self, text="Select a source to see its finding.", bg=C["bg"],
-                             fg=C["navy2"], font=(FONT, 10), justify="left", anchor="w",
-                             wraplength=780)
+        self.info = scroll_text(self, height=4, wrap="word", font=(FONT, 10), bg=C["card"],
+                                fg=C["navy2"], relief="flat", padx=10, pady=8, highlightthickness=1,
+                                highlightbackground=C["line"], cursor="arrow")
         self.info.pack(side="bottom", fill="x", padx=20, pady=8)
+        self._set_info("Select a source to see its finding.")
         nb = ttk.Notebook(self)
         nb.pack(fill="both", expand=True, padx=20)
         wrap = ttk.Frame(nb, padding=(0, 8, 0, 0))
@@ -3429,6 +3515,13 @@ class SourcesWindow(tk.Toplevel):
         self.transient(app)
         center(self, 900, 720)
 
+    def _set_info(self, text):
+        self.info.config(state="normal")
+        self.info.delete("1.0", "end")
+        self.info.insert("1.0", text)
+        self.info.config(state="disabled")
+        self.info.yview_moveto(0)
+
     def refresh(self):
         self.rules_tree.delete(*self.rules_tree.get_children())
         for cid, c in CHECKS.items():
@@ -3439,7 +3532,7 @@ class SourcesWindow(tk.Toplevel):
         for i, s in enumerate(self.app.sources):
             self.tree.insert("", "end", iid=str(i), text="  " + s["title"],
                              values=(s.get("type", ""), f"{len(s.get('checks', []))} check" + ("" if len(s.get('checks', [])) == 1 else "s")))
-        self.info.config(text="Select a source to see its finding. Double-click to open it.")
+        self._set_info("Select a source to see its finding. Double-click to open it.")
 
     def sel(self):
         s = self.tree.selection()
@@ -3455,7 +3548,7 @@ class SourcesWindow(tk.Toplevel):
         if s.get("findings"):
             extra = "\n" + "\n".join(f"• {EFFECT_PREFIX.get(f.get('effect'), '')}{f['text']}"
                                       for f in s["findings"][:4])
-        self.info.config(text=f"{s.get('finding', '')}{extra}\n\nLocation: {s.get('location') or '—'}\n"
+        self._set_info(f"{s.get('finding', '')}{extra}\n\nLocation: {s.get('location') or '—'}\n"
                               f"Used by: {names or '—'}")
 
     def preview_rule(self):
@@ -3464,7 +3557,7 @@ class SourcesWindow(tk.Toplevel):
             return
         cid = sel[0]
         srcs = [x["title"] for x in self.app.sources if cid in x.get("checks", [])]
-        self.info.config(text=f"{CHECKS[cid]['title']}: {CHECK_RULES.get(cid, '')}\n\n"
+        self._set_info(f"{CHECKS[cid]['title']}: {CHECK_RULES.get(cid, '')}\n\n"
                               f"Evidence: {'; '.join(srcs) or 'none linked yet – use Add to link a source'}")
 
     def open_sel(self):
@@ -3501,7 +3594,13 @@ class AddSource(tk.Toplevel):
         self.title("Add source")
         self.configure(bg=C["bg"])
         self.ai_findings = None
-        guide = tk.Frame(self, bg=C["card"], highlightthickness=1, highlightbackground=C["line"])
+        b = ttk.Frame(self, padding=(20, 10, 20, 18))
+        b.pack(side="bottom", fill="x")
+        ttk.Button(b, text="Save source", style="Accent.TButton", command=self.save).pack(side="right")
+        ttk.Button(b, text="Cancel", style="Ghost.TButton", command=self.destroy).pack(side="right", padx=8)
+        sf = ScrollFrame(self)
+        sf.pack(fill="both", expand=True)
+        guide = tk.Frame(sf.inner, bg=C["card"], highlightthickness=1, highlightbackground=C["line"])
         guide.pack(fill="x", padx=20, pady=(18, 0))
         tk.Label(guide, text="Add research that backs up a check", bg=C["card"], fg=C["text"],
                  font=(FONT, 11, "bold")).pack(anchor="w", padx=14, pady=(10, 2))
@@ -3511,7 +3610,7 @@ class AddSource(tk.Toplevel):
                              "3  Choose which checks it supports, then Save.",
                  bg=C["card"], fg=C["navy2"], font=(FONT, 10), justify="left").pack(
             anchor="w", padx=14, pady=(0, 10))
-        f = ttk.Frame(self, padding=20)
+        f = ttk.Frame(sf.inner, padding=20)
         f.pack(fill="both", expand=True)
         f.columnconfigure(1, weight=1)
         f.rowconfigure(5, weight=1)
@@ -3542,7 +3641,7 @@ class AddSource(tk.Toplevel):
         self.ai_status.grid(row=8, column=0, columnspan=4, sticky="w", pady=(10, 0))
 
         ttk.Label(f, text="What did it find?").grid(row=3, column=0, sticky="nw", pady=6)
-        self.find_t = tk.Text(f, height=4, wrap="word", font=(FONT, 10), relief="flat",
+        self.find_t = scroll_text(f, height=4, wrap="word", font=(FONT, 10), relief="flat",
                               highlightthickness=1, highlightbackground=C["line"])
         self.find_t.grid(row=3, column=1, columnspan=3, sticky="ew", pady=6)
         ttk.Label(f, text="One or two sentences, e.g. 'Adding X lifted conversion by 10%'.",
@@ -3566,10 +3665,6 @@ class AddSource(tk.Toplevel):
         ttk.Label(f, text="Click to select one or more.", style="Muted.TLabel").grid(
             row=6, column=1, columnspan=3, sticky="w")
 
-        b = ttk.Frame(f)
-        b.grid(row=7, column=0, columnspan=4, sticky="e", pady=(16, 0))
-        ttk.Button(b, text="Cancel", style="Ghost.TButton", command=self.destroy).pack(side="left", padx=8)
-        ttk.Button(b, text="Save source", style="Accent.TButton", command=self.save).pack(side="left")
         self.transient(win)
         center(self, 820, 760)
 

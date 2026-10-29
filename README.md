@@ -77,10 +77,10 @@ Everything runs on your computer. The only outside calls are to the store itself
 The evidence shown in the app is short summaries, in my own words, of publicly available research and case studies. Each one links to the original. All rights belong to their authors, and this project is not affiliated with or endorsed by any of them.
 
 - Baymard Institute – [Reasons for checkout abandonment](https://baymard.com/blog/reduce-cart-abandonment)
-- Spiegel Research Center, Northwestern University – [How online reviews influence sales](https://www.xait.com/hubfs/Spiegel_Online-Review_eBook_Jun2017_FINAL.pdf)
+- craftberry – published [case studies](https://craftberry.co/work) and CRO articles
 - Deloitte and Google – [Milliseconds Make Millions](https://web.dev/case-studies/milliseconds-make-millions)
 - Shopify – [Shopify Checkout and Shop Pay](https://www.shopify.com/enterprise/blog/shopify-checkout) (vendor study)
-- craftberry – published [case studies](https://craftberry.co/work) and CRO articles
+- Spiegel Research Center, Northwestern University – [How online reviews influence sales](https://www.xait.com/hubfs/Spiegel_Online-Review_eBook_Jun2017_FINAL.pdf)
 
 If you are an author and would like a summary changed or removed, please get in touch.
 
