@@ -1,0 +1,12 @@
+# ----------------------------------------
+# Tech details
+# Account: Demo
+# Start date: 20261001
+# End date: 20261028
+# ----------------------------------------
+
+Device category,Sessions,Engaged sessions,Ecommerce purchases,Purchase revenue,Add to carts,Checkouts
+mobile,"12,400","7,100",124,"6,820.50","1,180",410
+desktop,"5,300","3,600",143,"9,950.00",520,260
+tablet,600,350,6,320.00,40,15
+Grand total,"18,300","11,050",273,"17,090.50","1,740",685
