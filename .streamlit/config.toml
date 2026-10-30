@@ -1,0 +1,20 @@
+[theme]
+base = "light"
+primaryColor = "#0A0A0A"
+backgroundColor = "#FAFAFA"
+secondaryBackgroundColor = "#F0F0F0"
+textColor = "#0A0A0A"
+linkColor = "#0A0A0A"
+font = "sans-serif"
+borderColor = "#E5E5E5"
+showWidgetBorder = true
+baseRadius = "none"
+
+[client]
+toolbarMode = "viewer"
+
+[server]
+maxUploadSize = 20
+
+[browser]
+gatherUsageStats = false
