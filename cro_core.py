@@ -1047,7 +1047,7 @@ def render_audit(url, out_dir):
                 if dup:                      # same element found twice (e.g. one line with shipping
                     legend.append({"n": dup["n"], "key": key, "label": MARK_LABELS[key],   # and a promise)
                                    "status": f"same place as marker {dup['n']}", "bad": False,
-                                   "y": b["y"]})
+                                   "y": b["y"], "h": b["h"]})
                     continue
                 n += 1
                 screens = b["y"] / vh
@@ -1064,7 +1064,7 @@ def render_audit(url, out_dir):
                     bad = True
                 marks.append({"n": n, "x": b["x"], "y": b["y"], "w": b["w"], "h": b["h"], "bad": bad})
                 legend.append({"n": n, "key": key, "label": MARK_LABELS[key], "status": status,
-                               "bad": bad, "y": b["y"]})
+                               "bad": bad, "y": b["y"], "h": b["h"]})
             page.evaluate(JS_OVERLAY, [marks, vh])
             full_h = page.evaluate("Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)")
             ph = min(full_h or vh, MAX_SHOT_H)

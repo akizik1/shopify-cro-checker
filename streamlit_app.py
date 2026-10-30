@@ -50,8 +50,15 @@ h1 { font-weight: 700; letter-spacing: -0.02em; }
 .ev.bad { color:#DC2626; }
 .legend li.bad { color:#DC2626; font-weight:600; }
 footer { visibility: hidden; }
-.st-key-legend button { min-height: 0; padding: 2px 0; text-align: left; justify-content: flex-start; }
-.st-key-legend [data-testid="stVerticalBlock"] { gap: 0.15rem; }
+.st-key-legend button { min-height: 0; padding: 3px 0; text-align: left; justify-content: flex-start; }
+.st-key-legend button p { margin: 0; line-height: 1.35; text-align: left; }
+.st-key-legend [data-testid="stVerticalBlock"] { gap: 0.1rem; }
+[class*="st-key-reslist"] [data-testid="stVerticalBlock"] { gap: 0; }
+[class*="st-key-reslist"] button { min-height: 0; padding: 7px 10px; justify-content: flex-start;
+  text-align: left; border-radius: 0; border-bottom: 1px solid #EDEDED; }
+[class*="st-key-reslist"] button > div,
+[class*="st-key-reslist"] button [data-testid="stMarkdownContainer"] { width: 100%; justify-content: flex-start; text-align: left; }
+[class*="st-key-reslist"] button p { text-align: left; margin: 0; }
 </style>
 """)
 
@@ -79,7 +86,7 @@ def summary(results):
     st.html(f"<div class='score-card'><b>{passed} of {len(results)}</b> checks passed"
             f"&nbsp;&nbsp;·&nbsp;&nbsp;<b>{ideas}</b> idea(s) to test"
             f"<div class='muted'>Ideas are ranked by ICE priority (impact, confidence, ease). "
-            f"Open an item to see why it matters, what to try and how to fix it.</div></div>")
+            f"Click an item to see why it matters, what to try and how to fix it.</div></div>")
 
 
 def bar_chart(r):
@@ -99,60 +106,58 @@ def bar_chart(r):
     st.altair_chart(chart, width="stretch")
 
 
-def result_card(r, url, key):
+def result_detail(r, url, key):
     c = CHECKS[r["id"]]
     sc = r["ice"][0]
-    status = ":red[**✗ Fix**]" if not r["passed"] else "✓ OK"
-    prio = f"**{sc:.1f}**" if not r["passed"] else "—"
-    label = f"{prio} &nbsp;·&nbsp; {c['title']} &nbsp;·&nbsp; {status} &nbsp;·&nbsp; _{r['page']}_"
     ev = evidence_items(SOURCES, r["id"])
-    with st.expander(label):
-        tabs = st.tabs(["Details", "Help me fix this", "UX/dev brief"] if not r["passed"] else ["Details"])
-        with tabs[0]:
-            meta = r["page"] + (f" · {r['detail']}" if r.get("detail") else "")
-            if not r["passed"]:
-                _, im, co, ea = r["ice"]
-                meta += f" · Priority (ICE) {sc:.1f}/10 · Impact {im} · Confidence {co} · Ease {ea}"
-            st.html(f"<div class='muted'>{meta}</div>")
-            if r.get("chart"):
-                bar_chart(r)
-            st.markdown(f"**Why it matters**  \n{c['why']}")
-            if r["id"] in CHECK_RULES:
-                st.markdown(f"**How this was checked**  \n<span class='muted'>{CHECK_RULES[r['id']]}</span>",
-                            unsafe_allow_html=True)
-            if not r["passed"]:
-                st.markdown(f"**What we found**  \nWe found {r['observation']}.")
-                st.markdown(f"**What to try**  \nTry {c['change']}. The goal is to help visitors "
-                            f"{c['action']}.")
-                st.markdown(f"**Hypothesis (for an A/B test)**  \n{hypothesis(r)}")
-            if ev:
-                st.markdown("**Evidence** (research and case studies)")
-                st.html("".join(f"<p class='ev{' bad' if i['effect'] != 'positive' else ''}'>• "
-                                f"{_esc(evidence_line(i))}</p>" for i in ev))
-            st.html("<p class='muted'>" + (
-                "Thresholds are rules of thumb for spotting problems, not benchmarks."
-                if r["page"] == "Your data" else
-                "One store's result is a starting point for a hypothesis, not a guarantee.") + "</p>")
-        if r["passed"]:
-            return
-        with tabs[1]:
-            st.markdown(f"**Goal:** {c['change']}.")
-            for i, s in enumerate(c["fix"], 1):
-                st.markdown(f"{i}. {s}")
-            if c.get("code"):
-                st.markdown("**Code you can paste** (copy with the icon in the corner)")
-                st.code(c["code"], language="liquid")
-            st.markdown("**Ask an AI assistant**: paste this into Claude or any AI assistant for "
-                        "steps that fit your theme.")
-            st.code(ai_prompt(r, url), language=None, wrap_lines=True)
-            st.markdown("**After the change**: check the page on mobile, then compare conversion and "
-                        "revenue per visitor before and after (or run an A/B test if you have "
-                        "enough traffic).")
-        with tabs[2]:
-            brief = make_brief(r, url, ev)
-            st.download_button("Download brief (.md)", brief, file_name=f"brief_{r['id']}.md",
-                               key=f"brief_{key}")
-            st.markdown(brief)
+    st.markdown(f"#### {c['title']}")
+    st.markdown(":red[**✗ Worth fixing**]" if not r["passed"] else "**✓ Looks good**")
+    tabs = st.tabs(["Details", "Help me fix this", "UX/dev brief"] if not r["passed"] else ["Details"])
+    with tabs[0]:
+        meta = r["page"] + (f" · {r['detail']}" if r.get("detail") else "")
+        if not r["passed"]:
+            _, im, co, ea = r["ice"]
+            meta += f" · Priority (ICE) {sc:.1f}/10 · Impact {im} · Confidence {co} · Ease {ea}"
+        st.html(f"<div class='muted'>{meta}</div>")
+        if r.get("chart"):
+            bar_chart(r)
+        st.markdown(f"**Why it matters**  \n{c['why']}")
+        if r["id"] in CHECK_RULES:
+            st.markdown(f"**How this was checked**  \n<span class='muted'>{CHECK_RULES[r['id']]}</span>",
+                        unsafe_allow_html=True)
+        if not r["passed"]:
+            st.markdown(f"**What we found**  \nWe found {r['observation']}.")
+            st.markdown(f"**What to try**  \nTry {c['change']}. The goal is to help visitors "
+                        f"{c['action']}.")
+            st.markdown(f"**Hypothesis (for an A/B test)**  \n{hypothesis(r)}")
+        if ev:
+            st.markdown("**Evidence** (research and case studies)")
+            st.html("".join(f"<p class='ev{' bad' if i['effect'] != 'positive' else ''}'>• "
+                            f"{_esc(evidence_line(i))}</p>" for i in ev))
+        st.html("<p class='muted'>" + (
+            "Thresholds are rules of thumb for spotting problems, not benchmarks."
+            if r["page"] == "Your data" else
+            "One store's result is a starting point for a hypothesis, not a guarantee.") + "</p>")
+    if r["passed"]:
+        return
+    with tabs[1]:
+        st.markdown(f"**Goal:** {c['change']}.")
+        for i, s in enumerate(c["fix"], 1):
+            st.markdown(f"{i}. {s}")
+        if c.get("code"):
+            st.markdown("**Code you can paste** (copy with the icon in the corner)")
+            st.code(c["code"], language="liquid")
+        st.markdown("**Ask an AI assistant**: paste this into Claude or any AI assistant for "
+                    "steps that fit your theme.")
+        st.code(ai_prompt(r, url), language=None, wrap_lines=True)
+        st.markdown("**After the change**: check the page on mobile, then compare conversion and "
+                    "revenue per visitor before and after (or run an A/B test if you have "
+                    "enough traffic).")
+    with tabs[2]:
+        brief = make_brief(r, url, ev)
+        st.download_button("Download brief (.md)", brief, file_name=f"brief_{r['id']}.md",
+                           key=f"brief_{key}")
+        st.markdown(brief)
 
 
 def _esc(s):
@@ -160,25 +165,80 @@ def _esc(s):
     return html.escape(s)
 
 
+PANEL_H = 540   # list and detail keep this height and scroll inside, so the page stays short
+
+
 def results_list(results, url, prefix):
-    choice = st.radio("Show", ["All", "To fix", "OK"], horizontal=True, key=f"filter_{prefix}",
+    """List on the left, details of the selected item on the right."""
+    f1, f2 = st.columns([1, 1.4])
+    choice = f1.radio("Show", ["To fix", "All", "OK"], horizontal=True, key=f"filter_{prefix}",
                       label_visibility="collapsed")
+    f2.html("<p class='muted' style='margin-top:6px'>Click an item to see the details.</p>")
     shown = [r for r in results if choice == "All" or (choice == "To fix") != r["passed"]]
     if not shown:
         st.info("Nothing to show with this filter.")
-    for i, r in enumerate(shown):
-        result_card(r, url, f"{prefix}_{i}")
+        return
+    sel_key = f"sel_{prefix}"
+    ids = [f"{r['id']}|{r['page']}" for r in shown]
+    if st.session_state.get(sel_key) not in ids:
+        st.session_state[sel_key] = ids[0]
+    left, right = st.columns([1, 1.4], gap="medium")
+    with left, st.container(height=PANEL_H, border=True, key=f"reslist_{prefix}"):
+        heading_done = False
+        for rid, r in zip(ids, shown):
+            if choice == "All" and r["passed"] and not heading_done:
+                st.html("<p class='muted' style='margin:14px 10px 4px'>Looks good</p>")
+                heading_done = True
+            title = CHECKS[r["id"]]["title"]
+            chosen = rid == st.session_state[sel_key]
+            page = f"· {r['page']}" if chosen else f":gray[· {r['page']}]"
+            if r["passed"]:
+                label = f"✓ &nbsp; {title} &nbsp; {page}"
+            else:
+                mark = "✗" if chosen else ":red[✗]"
+                label = f"**{r['ice'][0]:.1f}** &nbsp; {title} &nbsp; {mark} &nbsp; {page}"
+            if st.button(label, key=f"pick_{prefix}_{rid}", width="stretch",
+                         type="primary" if chosen else "tertiary"):
+                st.session_state[sel_key] = rid
+                st.rerun()
+    idx = ids.index(st.session_state[sel_key])
+    with right, st.container(height=PANEL_H, border=True):
+        result_detail(shown[idx], url, f"{prefix}_{idx}")
+
+
+def screen_windows(height, vh, legend, pad=40):
+    """One window per phone screen, stretched so every marked element (and its red circle)
+    that touches the screen is shown in full."""
+    wins = []
+    for top in range(0, height, vh):
+        bottom = min(top + vh, height)
+        t, b = top, bottom
+        for it in legend:
+            y, h = it.get("y"), it.get("h") or 0
+            if it.get("n") and y is not None and y < bottom and y + h > top:
+                t, b = min(t, y - pad), max(b, y + h + pad)
+        wins.append((top, bottom, max(0, t - 30), min(height, b + 30)))
+    return wins
 
 
 @st.cache_data(show_spinner=False, max_entries=20)
-def screen_slices(shot, vh):
-    """Cut the long screenshot into phone-screen-sized pieces."""
+def screen_slices(shot, vh, legend_key):
+    """Cut the long screenshot into phone-screen pieces with a little of the screens around them.
+    A dotted line marks where each screen starts and ends."""
+    import json
     from io import BytesIO
-    from PIL import Image
-    img = Image.open(shot)
+    from PIL import Image, ImageDraw
+    legend = json.loads(legend_key)
+    img = Image.open(shot).convert("RGB")
     out = []
-    for top in range(0, img.height, vh):
-        part = img.crop((0, top, img.width, min(top + vh, img.height)))
+    for top, bottom, t, b in screen_windows(img.height, vh, legend):
+        part = img.crop((0, t, img.width, b)).copy()
+        d = ImageDraw.Draw(part)
+        for y in (top, bottom):
+            if 0 < y < img.height and t < y < b:
+                yy = y - t
+                for x in range(0, part.width, 10):
+                    d.line([(x, yy), (x + 4, yy)], fill=(115, 115, 115), width=2)
         buf = BytesIO()
         part.save(buf, format="PNG")
         out.append(buf.getvalue())
@@ -190,18 +250,20 @@ def visual_audit(audit):
     if not audit or not Path(audit.get("shot", "")).exists():
         return
     vh = int(audit.get("vh") or 844)
-    slices = screen_slices(audit["shot"], vh)
+    import json
+    slices = screen_slices(audit["shot"], vh, json.dumps(
+        [{"n": it.get("n"), "y": it.get("y"), "h": it.get("h")} for it in audit["legend"]]))
     total = len(slices)
     key = f"screen_{audit['shot']}"
     i = min(st.session_state.get(key, 0), total - 1)
 
-    st.subheader("Visual audit: the real mobile page")
     st.html("<p class='muted'>The product page opened as a phone (390×844), one screen at a time. "
-            "Screen 1 is what a visitor sees without scrolling. Red circles: what should change. "
-            "Pop-ups or cookie banners can cover parts of the page.</p>")
-    left, right = st.columns([1, 1.4], gap="large")
+            "Screen 1 is what a visitor sees without scrolling. Dotted lines: where a screen starts "
+            "and ends. Red circles: what should change. Pop-ups or cookie banners can cover parts "
+            "of the page.</p>")
+    left, right = st.columns([1, 1.6], gap="large")
     with left:
-        st.image(slices[i], width=330)
+        st.image(slices[i], width=280)
         n1, n2, n3 = st.columns([1, 1.2, 1])
         if n1.button("◀", key=f"{key}_prev", disabled=i == 0, width="stretch"):
             st.session_state[key] = i - 1
@@ -224,7 +286,7 @@ def visual_audit(audit):
             text = f"{it['n']}. {it['label']}: {it['status']}"
             text = f":red[{text}]" if it["bad"] else text
             if here:
-                text = f"**{text}**  ← this screen"
+                text = f"**{text}** ← this screen"
             if st.button(text, key=f"{key}_go_{it['n']}_{it['key']}", type="tertiary"):
                 st.session_state[key] = min(screen, total - 1)
                 st.rerun(scope="fragment")
@@ -297,12 +359,18 @@ with tab_store:
                                html_report(res["url"], res["results"], res["notes"], res["audit"], SOURCES),
                                file_name="cro_report.html", mime="text/html", width="stretch")
         st.html(f"<p class='muted'>Checked: {_esc(res['url'])}</p>")
-        visual_audit(res["audit"])
-        results_list(res["results"], res["url"], "store")
-        if res["notes"]:
-            with st.expander("Notes about this check"):
-                for n in res["notes"]:
-                    st.markdown(f"- {n}")
+        has_audit = bool(res["audit"] and Path(res["audit"].get("shot", "")).exists())
+        n_fix = sum(not r["passed"] for r in res["results"])
+        names = [f"Results ({n_fix} to fix)"] + (["Visual audit"] if has_audit else []) + ["Notes"]
+        parts = st.tabs(names)
+        with parts[0]:
+            results_list(res["results"], res["url"], "store")
+        if has_audit:
+            with parts[1]:
+                visual_audit(res["audit"])
+        with parts[-1]:
+            for n in res["notes"] or ["No notes for this check."]:
+                st.markdown(f"- {n}")
     elif not go:
         st.html("<p class='muted'>The check reads the homepage and one product page, the way a "
                 "visitor's browser would. Nothing is stored. Results are ideas to test, not "
