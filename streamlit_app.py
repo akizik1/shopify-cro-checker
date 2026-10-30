@@ -50,6 +50,8 @@ h1 { font-weight: 700; letter-spacing: -0.02em; }
 .ev.bad { color:#DC2626; }
 .legend li.bad { color:#DC2626; font-weight:600; }
 footer { visibility: hidden; }
+.st-key-legend button { min-height: 0; padding: 2px 0; text-align: left; justify-content: flex-start; }
+.st-key-legend [data-testid="stVerticalBlock"] { gap: 0.15rem; }
 </style>
 """)
 
@@ -168,27 +170,70 @@ def results_list(results, url, prefix):
         result_card(r, url, f"{prefix}_{i}")
 
 
+@st.cache_data(show_spinner=False, max_entries=20)
+def screen_slices(shot, vh):
+    """Cut the long screenshot into phone-screen-sized pieces."""
+    from io import BytesIO
+    from PIL import Image
+    img = Image.open(shot)
+    out = []
+    for top in range(0, img.height, vh):
+        part = img.crop((0, top, img.width, min(top + vh, img.height)))
+        buf = BytesIO()
+        part.save(buf, format="PNG")
+        out.append(buf.getvalue())
+    return out
+
+
+@st.fragment
 def visual_audit(audit):
     if not audit or not Path(audit.get("shot", "")).exists():
         return
+    vh = int(audit.get("vh") or 844)
+    slices = screen_slices(audit["shot"], vh)
+    total = len(slices)
+    key = f"screen_{audit['shot']}"
+    i = min(st.session_state.get(key, 0), total - 1)
+
     st.subheader("Visual audit: the real mobile page")
-    st.html("<p class='muted'>Opened as a phone screen (390×844). Dashed line: end of the first "
-            "screen. Red circles: what should change. Pop-ups or cookie banners can cover parts "
-            "of the page.</p>")
-    left, right = st.columns([1, 1.3], gap="large")
+    st.html("<p class='muted'>The product page opened as a phone (390×844), one screen at a time. "
+            "Screen 1 is what a visitor sees without scrolling. Red circles: what should change. "
+            "Pop-ups or cookie banners can cover parts of the page.</p>")
+    left, right = st.columns([1, 1.4], gap="large")
     with left:
-        st.image(audit["shot"], width="stretch")
-    with right:
-        items = []
+        st.image(slices[i], width=330)
+        n1, n2, n3 = st.columns([1, 1.2, 1])
+        if n1.button("◀", key=f"{key}_prev", disabled=i == 0, width="stretch"):
+            st.session_state[key] = i - 1
+            st.rerun(scope="fragment")
+        n2.html(f"<p style='text-align:center;margin-top:8px'><b>{i + 1} / {total}</b></p>")
+        if n3.button("▶", key=f"{key}_next", disabled=i == total - 1, width="stretch"):
+            st.session_state[key] = i + 1
+            st.rerun(scope="fragment")
+        st.download_button("Download full screenshot", Path(audit["shot"]).read_bytes(),
+                           file_name="mobile_audit.png", mime="image/png", key=f"{key}_dl",
+                           width="stretch")
+    with right, st.container(key="legend"):
+        st.markdown("**What we measured** <span class='muted'>· click an item to jump to it</span>",
+                    unsafe_allow_html=True)
         for it in audit["legend"]:
-            if it["n"]:
-                cls = " class='bad'" if it["bad"] else ""
-                items.append(f"<li value='{it['n']}'{cls}>{_esc(it['label'])}: {_esc(it['status'])}</li>")
+            if not it["n"]:
+                continue
+            screen = int((it.get("y") or 0) // vh)
+            here = screen == i
+            text = f"{it['n']}. {it['label']}: {it['status']}"
+            text = f":red[{text}]" if it["bad"] else text
+            if here:
+                text = f"**{text}**  ← this screen"
+            if st.button(text, key=f"{key}_go_{it['n']}_{it['key']}", type="tertiary"):
+                st.session_state[key] = min(screen, total - 1)
+                st.rerun(scope="fragment")
         missing = [it["label"] for it in audit["legend"] if not it["n"]]
-        st.html("<ol class='legend'>" + "".join(items) + "</ol>" +
-                (f"<p class='muted'>Not found: {_esc(', '.join(missing))}</p>" if missing else ""))
-        st.download_button("Download screenshot", Path(audit["shot"]).read_bytes(),
-                           file_name="mobile_audit.png", mime="image/png")
+        if missing:
+            st.html(f"<p class='muted'>Not found on the page: {_esc(', '.join(missing))}</p>")
+        if audit.get("cut"):
+            st.html("<p class='muted'>Very long page: only the first 6,000 pixels are shown.</p>")
+
 
 
 # ---------------------------------------------------------------- page
@@ -202,8 +247,13 @@ tab_store, tab_data, tab_ab, tab_how, tab_src = st.tabs(
 
 # ---------- check a store
 with tab_store:
+    def clear_store():
+        st.session_state.pop("store", None)
+        st.session_state["url_in"] = ""
+
     with st.form("check"):
-        url_in = st.text_input("Store or product link", placeholder="e.g. yourstore.com or a product page link")
+        url_in = st.text_input("Store or product link", key="url_in",
+                               placeholder="e.g. yourstore.com or a product page link")
         c1, c2 = st.columns(2)
         with_speed = c1.checkbox("Google mobile speed test", help="Adds a mobile speed score. Takes up to a minute.")
         can_browse = browser_ready()
@@ -212,7 +262,9 @@ with tab_store:
             help=("Opens the product page as a phone, measures where key elements are and marks "
                   "them on a screenshot. Takes 20–40 seconds." if can_browse else
                   "Not available on this server. The desktop app has it."))
-        go = st.form_submit_button("Analyze", type="primary")
+        b1, b2, _ = st.columns([1, 1, 6])
+        go = b1.form_submit_button("Analyze", type="primary", width="stretch")
+        b2.form_submit_button("Clear", on_click=clear_store, width="stretch")
 
     if go:
         if not url_in.strip():
@@ -262,7 +314,9 @@ with tab_data:
                 "devices, channels and landing pages, and to see where carts and checkouts drop off.")
     with st.expander("How to export your data as CSV"):
         st.text(EXPORT_HELP)
-    files = st.file_uploader("CSV files", type=["csv"], accept_multiple_files=True)
+    st.session_state.setdefault("up_key", 0)
+    files = st.file_uploader("CSV files", type=["csv"], accept_multiple_files=True,
+                             key=f"up_{st.session_state['up_key']}")
     samples = sorted((HERE / "samples").glob("*.csv"))
     if samples and not files:
         st.html("<p class='muted'>No data at hand? Try a sample file:</p>")
@@ -282,6 +336,10 @@ with tab_data:
     elif st.session_state.get("sample"):
         paths = [Path(st.session_state["sample"])]
     if paths:
+        def clear_data():
+            st.session_state.pop("sample", None)
+            st.session_state["up_key"] += 1
+        st.button("Clear", on_click=clear_data, key="clear_data")
         all_results, all_notes = [], []
         for p in paths:
             try:
