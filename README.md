@@ -2,7 +2,9 @@
 
 ![Shopify CRO Checker](docs/images/00_cover.png)
 
-A desktop app that audits a Shopify store the way a CRO team works: find friction, explain why it matters, write a testable hypothesis, rank the ideas and hand them to the team.
+A tool that audits a Shopify store the way a CRO team works: find friction, explain why it matters, write a testable hypothesis, rank the ideas and hand them to the team.
+
+**Try it in your browser:** [shopify-cro-checker.streamlit.app](https://shopify-cro-checker.streamlit.app). No installation needed. There is also a desktop version with a few extra features (see below).
 
 I built it while learning conversion rate optimisation, to practise the full process on real stores: research, hypotheses, prioritisation, briefs and A/B test analysis.
 
@@ -23,6 +25,8 @@ I built it while learning conversion rate optimisation, to practise the full pro
 
 | | |
 |---|---|
+| ![Web app](docs/images/12_web_app.png) | ![Web app detail](docs/images/13_web_app_detail.png) |
+| Web version: paste a link, get ranked ideas | Each idea explained, with evidence |
 | ![Results](docs/images/01_results.png) | ![Marked mobile page](docs/images/02b_marked_mobile_page.png) |
 | Results ranked by priority, with plain-language details | Real mobile-browser audit with red circles |
 | ![Before and after](docs/images/03_before_after_sketch.png) | ![Help me fix this](docs/images/04_help_me_fix.png) |
@@ -38,13 +42,26 @@ The screenshots use a demo store (*Nordlys*, not a real brand) and sample analyt
 
 ## How to run
 
-Requires Python 3.10 or newer.
+### Web version
+
+Open [shopify-cro-checker.streamlit.app](https://shopify-cro-checker.streamlit.app), paste a store link and press Analyze.
+
+To run it on your own computer (Python 3.10 or newer):
 
 ```bash
 pip install -r requirements.txt
+streamlit run streamlit_app.py
 ```
 
-Then double-click `shopify_cro_checker.pyw` (or run `python shopify_cro_checker.pyw`).
+### Desktop version
+
+The desktop app also lets you add your own sources (links, PDFs, Word files) and read them with the optional AI add-on.
+
+```bash
+pip install requests beautifulsoup4 pypdf playwright
+```
+
+Then double-click `shopify_cro_checker.pyw` (or run `python shopify_cro_checker.pyw`). Keep `cro_core.py` in the same folder.
 
 The real mobile-browser audit uses Playwright with the Chrome or Edge already on your computer. If you have neither, run once:
 
@@ -54,7 +71,16 @@ python -m playwright install chromium
 
 To try the analytics feature, use the files in `samples/`.
 
-**AI add-on (optional):** open Sources → *AI add-on settings*, pick a provider and paste your own API key (or install Ollama for a free local model). The key is saved only in a settings file in your user folder, never in the repository.
+**AI add-on (optional, desktop):** press *AI add-on* at the top, pick a provider and paste your own API key (or install Ollama for a free local model). The key is saved only in a settings file in your user folder, never in the repository.
+
+### Project structure
+
+| File | What it is |
+|---|---|
+| `cro_core.py` | The checks, store analysis, scoring, evidence, analytics, A/B maths and report. Shared by both versions. |
+| `streamlit_app.py` | Web version |
+| `shopify_cro_checker.pyw` | Desktop version (Tkinter) |
+| `samples/` | Example analytics exports |
 
 ## How it works
 
@@ -63,7 +89,7 @@ To try the analytics feature, use the files in `samples/`.
 3. **Explain and rank**: why it matters, a hypothesis, evidence from the sources list, and an ICE score.
 4. **Act**: visual audit, fix steps, UX/dev brief, A/B test tools and a shareable report.
 
-Everything runs on your computer. The only outside calls are to the store itself and, if switched on, Google's free PageSpeed API and the AI provider you chose for the AI add-on.
+The desktop version runs on your computer. Its only outside calls are to the store itself and, if switched on, Google's free PageSpeed API and the AI provider you chose. The web version does the same checks on a server, saves nothing you enter, and only opens public web addresses.
 
 ## Limitations
 
@@ -71,6 +97,7 @@ Everything runs on your computer. The only outside calls are to the store itself
 - Rules read the page, they don't understand it. Some themes or apps can cause a false alarm, so treat results as ideas to test, not verdicts.
 - Thresholds for analytics findings are rules of thumb, not industry benchmarks.
 - A result from one store or case study does not guarantee the same result elsewhere.
+- Some stores block automated visits, especially from cloud servers. The web version then can't read the page; the desktop version usually can.
 
 ## Sources and credits
 
@@ -86,7 +113,7 @@ If you are an author and would like a summary changed or removed, please get in 
 
 ## Tech
 
-Python, Tkinter, Requests, BeautifulSoup, Playwright, pypdf, Google PageSpeed Insights API, Claude API (optional).
+Python, Streamlit, Tkinter, Requests, BeautifulSoup, Playwright, pypdf, Google PageSpeed Insights API, Claude API (optional).
 
 ## Author
 
